@@ -1,0 +1,29 @@
+# ------------------------------
+# ShadowPilot - docker compose
+#   docker compose up -d --build
+#   docker compose logs -f
+# ------------------------------
+
+services:
+  shadowpilot:
+    build: .
+    container_name: shadowpilot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Always keep the DB inside the volume, whatever .env says
+      DB_PATH: /app/database/shadow_pilot.db
+    volumes:
+      - shadowpilot-data:/app/database
+    # Host network: the bot can reach an AI server on the host via 127.0.0.1
+    # (e.g. Ollama listening on 127.0.0.1:11434). The bot uses long polling,
+    # so it does not expose any ports.
+    network_mode: host
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  shadowpilot-data:
