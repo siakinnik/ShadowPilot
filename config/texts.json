@@ -227,7 +227,19 @@
     "member_approved": "Approved",
     "member_rejected": "Access removed",
     "scope_bot": "chat with the bot",
-    "scope_business": "business chats"
+    "scope_business": "business chats",
+    "btn_ai_mode": "⏸ Pause AI in this chat",
+    "btn_ai_mode_change": "⏸ AI pause: change / resume",
+    "btn_ai_mode_replies": "🔇 Only auto-replies off — for:",
+    "btn_ai_mode_ai": "🚫 AI completely off — for:",
+    "btn_ai_mode_resume": "▶️ Turn AI back on",
+    "ai_mode_title": "⏸ <b>AI in the chat with {title}</b>\n\n{status}\n\n🔇 <b>Only auto-replies off</b> — the bot does not answer here; archive, deleted/edited tracking, AI memory and topics keep working.\n🚫 <b>AI completely off</b> — no answers, and the AI never sees messages from this period (not in replies, memory or topics, even later). They are still archived for deleted/edited tracking.\n\nPick a duration (∞ = until you turn it back on):",
+    "ai_mode_status_on": "🤖 AI in this chat: <b>✅ on</b>",
+    "ai_mode_status_replies_off": "🤖 AI in this chat: <b>🔇 auto-replies off</b> {until}",
+    "ai_mode_status_ai_off": "🤖 AI in this chat: <b>🚫 off</b> {until}",
+    "ai_mode_until": "until {time}",
+    "ai_mode_forever": "until turned back on",
+    "ai_mode_resumed": "AI is back on"
   },
   "tracking": {
     "edited": "✏️ <b>{name}</b> edited a message (sent {sent})\n\n<b>Before:</b>\n{before}\n<b>After:</b>\n{after}",

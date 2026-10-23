@@ -21,7 +21,7 @@ const chats = require('../db/chats');
 const archive = require('../db/archive');
 const topics = require('../db/topics');
 const { runDigestNow } = require('../handlers/digestWorker');
-const { formatRange } = require('../utils/time');
+const { formatRange, formatDateTime } = require('../utils/time');
 const { DAYS, checkSchedule, getLocalTime, parseRange, resolveRuleText } = require('../utils/scheduleChecker');
 const { daysLabel, ruleLine, exceptionBlock, diffSchedules } = require('../utils/scheduleFormat');
 const { proposeSchedule } = require('../ai/scheduleEditor');
@@ -287,9 +287,44 @@ function chatsView() {
     const recent = chats.recentChats(NS(), 8);
     const lines = [T.chats_title];
     if (recent.length === 0) lines.push('', T.chats_empty);
-    const keyboard = recent.map(chat => [btn(chats.chatTitle(chat), `chat:${chat.id}`)]);
+    const keyboard = recent.map(chat => {
+        const mode = chats.aiModeOf(chat);
+        const icon = mode ? `${AI_MODE_ICON[mode]} ` : '';
+        return [btn(icon + chats.chatTitle(chat), `chat:${chat.id}`)];
+    });
     keyboard.push([btn(T.btn_back, 'home')]);
     return { text: lines.join('\n'), keyboard };
+}
+
+const AI_MODE_ICON = { replies_off: '🔇', ai_off: '🚫' };
+const AI_MODE_HOURS = [1, 3, 8, 24, 0]; // 0 = until turned back on
+
+// "🤖 AI in this chat: …" line for the chat card
+function aiModeLine(chat) {
+    const mode = chats.aiModeOf(chat);
+    if (!mode) return T.ai_mode_status_on;
+    const until = chat.ai_mode_until ? fill(T.ai_mode_until, { time: formatDateTime(chat.ai_mode_until) }) : T.ai_mode_forever;
+    return fill(T[`ai_mode_status_${mode}`], { until });
+}
+
+// Pick a mode and a duration for one chat
+function aiModeView(id) {
+    const chat = ownChat(id);
+    if (!chat) return chatsView();
+    const duration = hours => (hours ? fill(T.hours, { value: hours }) : '∞');
+    const row = mode => AI_MODE_HOURS.map(hours => btn(duration(hours), `caiset:${id}:${mode}:${hours}`));
+    const keyboard = [
+        [btn(T.btn_ai_mode_replies, `cai:${id}`)],
+        row('r'),
+        [btn(T.btn_ai_mode_ai, `cai:${id}`)],
+        row('a')
+    ];
+    if (chats.aiModeOf(chat)) keyboard.push([btn(T.btn_ai_mode_resume, `caioff:${id}`)]);
+    keyboard.push([btn(T.btn_back, `chat:${id}`)]);
+    return {
+        text: fill(T.ai_mode_title, { title: escapeHtml(chats.chatTitle(chat)), status: aiModeLine(chat) }),
+        keyboard
+    };
 }
 
 function chatView(id) {
@@ -301,15 +336,16 @@ function chatView(id) {
     if (chat.reanalyze_by) aiMemory = T.chat_reanalyzing;
     else if (!s.autoMemory && !chat.ai_memory) aiMemory = T.chat_ai_memory_off;
     return {
-        text: fill(T.chat_title, {
+        text: (fill(T.chat_title, {
             title: escapeHtml(chats.chatTitle(chat)),
             chatId: chat.chat_id,
             count: archive.countArchived(chat.chat_key),
             limit: s.historyLimit,
             context: chat.context ? quote(chat.context) : T.chat_no_context,
             aiMemory
-        }).slice(0, 4096),
+        }) + '\n\n' + aiModeLine(chat)).slice(0, 4096),
         keyboard: [
+            [btn(chats.aiModeOf(chat) ? T.btn_ai_mode_change : T.btn_ai_mode, `cai:${id}`)],
             [btn(T.btn_set_context, `cset:${id}`), btn(T.btn_append_context, `cadd:${id}`)],
             ...(chat.context ? [[btn(T.btn_delete_context, `cdel:${id}`)]] : []),
             [btn(T.btn_chat_topics, `ctop:${id}`), btn(T.btn_reanalyze, `crean:${id}`)],
@@ -958,6 +994,30 @@ function createAdminPanel(bot) {
                     text: fill(T.confirm_clear_chat, { title: escapeHtml(chats.chatTitle(chat)) }),
                     keyboard: [[btn(T.btn_yes, `cclryes:${index}`), btn(T.btn_no, `chat:${index}`)]]
                 });
+                break;
+            }
+
+            case 'cai':
+                await show(ctx, aiModeView(index));
+                break;
+
+            case 'caiset': {
+                // arg = chat id, arg2 = 'r' (auto-replies off) | 'a' (AI off), 4th part = hours (0 = forever)
+                const chat = ownChat(index);
+                if (!chat) break;
+                const hours = Number(data.split(':')[4]) || 0;
+                const mode = arg2 === 'a' ? 'ai_off' : 'replies_off';
+                chats.setAiMode(chat.id, mode, hours ? Math.floor(Date.now() / 1000) + hours * 3600 : null);
+                toast = T.saved;
+                await show(ctx, chatView(index));
+                break;
+            }
+
+            case 'caioff': {
+                const chat = ownChat(index);
+                if (chat) chats.setAiMode(chat.id, null);
+                toast = T.ai_mode_resumed;
+                await show(ctx, chatView(index));
                 break;
             }
 

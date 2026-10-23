@@ -28,23 +28,28 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 `);
 
+// Column added later: messages received while the AI was switched off for the chat.
+// They stay in the archive (deleted/edited tracking) but the AI never sees them.
+const archiveColumns = new Set(db.prepare('PRAGMA table_info(archive)').all().map(col => col.name));
+if (!archiveColumns.has('ai_hidden')) db.exec('ALTER TABLE archive ADD COLUMN ai_hidden INTEGER NOT NULL DEFAULT 0');
+
 const insertStmt = db.prepare(`
-    INSERT INTO archive (chat_key, message_id, role, text, media_type, file_id, summary, sent_at)
-    VALUES (@chat_key, @message_id, @role, @text, @media_type, @file_id, @summary, @sent_at)
+    INSERT INTO archive (chat_key, message_id, role, text, media_type, file_id, summary, sent_at, ai_hidden)
+    VALUES (@chat_key, @message_id, @role, @text, @media_type, @file_id, @summary, @sent_at, @ai_hidden)
     ON CONFLICT (chat_key, message_id) DO NOTHING
 `);
 const getStmt = db.prepare('SELECT * FROM archive WHERE chat_key = ? AND message_id = ?');
 const editStmt = db.prepare('UPDATE archive SET text = ?, summary = ?, media_type = ?, file_id = ?, edited_at = ? WHERE id = ?');
 const deleteStmt = db.prepare('UPDATE archive SET deleted = 1 WHERE id = ?');
-const afterStmt = db.prepare('SELECT * FROM archive WHERE chat_key = ? AND id > ? ORDER BY id ASC LIMIT ?');
+const afterStmt = db.prepare('SELECT * FROM archive WHERE chat_key = ? AND id > ? AND ai_hidden = 0 ORDER BY id ASC LIMIT ?');
 const pendingStmt = db.prepare(`
     SELECT chat_key, COUNT(*) AS n, MAX(sent_at) AS last_at, MAX(id) AS max_id
-    FROM archive WHERE chat_key = ? AND id > ?
+    FROM archive WHERE chat_key = ? AND id > ? AND ai_hidden = 0
 `);
 const countStmt = db.prepare('SELECT COUNT(*) AS n FROM archive WHERE chat_key = ?');
 const contextStmt = db.prepare(`
     SELECT role, summary, sent_at FROM (
-        SELECT id, role, summary, sent_at FROM archive WHERE chat_key = ? AND deleted = 0 ORDER BY id DESC LIMIT ?
+        SELECT id, role, summary, sent_at FROM archive WHERE chat_key = ? AND deleted = 0 AND ai_hidden = 0 ORDER BY id DESC LIMIT ?
     ) ORDER BY id ASC
 `);
 const clearChatStmt = db.prepare('DELETE FROM archive WHERE chat_key = ?');
@@ -68,8 +73,9 @@ function mediaOf(message) {
  * @param {'them'|'owner'|'ai'} role
  * @param {object} message  Bot API Message (or { message_id, text, date } for AI replies)
  * @param {string} summary  one-line representation for the AI
+ * @param {{ hidden?: boolean }} [options] hidden = never shown to the AI (AI was off for the chat)
  */
-function archiveMessage(chatKey, role, message, summary) {
+function archiveMessage(chatKey, role, message, summary, { hidden = false } = {}) {
     const { media_type, file_id } = mediaOf(message);
     insertStmt.run({
         chat_key: chatKey,
@@ -79,7 +85,8 @@ function archiveMessage(chatKey, role, message, summary) {
         media_type,
         file_id,
         summary,
-        sent_at: message.date || Math.floor(Date.now() / 1000)
+        sent_at: message.date || Math.floor(Date.now() / 1000),
+        ai_hidden: hidden ? 1 : 0
     });
 }
 
@@ -136,7 +143,8 @@ function seedFromHistory() {
                 media_type: null,
                 file_id: null,
                 summary: row.content,
-                sent_at: Math.floor(Date.parse(`${row.created_at}Z`) / 1000) || Math.floor(Date.now() / 1000)
+                sent_at: Math.floor(Date.parse(`${row.created_at}Z`) / 1000) || Math.floor(Date.now() / 1000),
+                ai_hidden: 0
             });
         }
         db.prepare("INSERT INTO meta (key, value) VALUES ('archive_seeded', '1')").run();

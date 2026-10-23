@@ -97,6 +97,9 @@ Send `/start` or `/panel` to the bot from an owner account:
 - ⏸ **Pause after you reply**: off / 2 / 5 / 15 / 30 / 60 min
 - 👥 **Chats**: send `@username` or a Telegram ID (or pick one of the recent chats), then:
   - ✏️ **Set**, ➕ **append to** or 🗑 **delete** your **private context** for this person. It is added to the AI prompt for that chat only, e.g. *"Classmate Dima. 'Banana' is our inside joke about the physics teacher."* The AI uses it but never reveals it.
+  - ⏸ **Pause the AI in this chat** for 1 h / 3 h / 8 h / 24 h or until you turn it back on:
+    - 🔇 **only auto-replies off**: the bot stays silent here, but archive, deleted/edited tracking, AI memory and topics keep working;
+    - 🚫 **AI completely off**: no replies, and messages from this period are never shown to the AI (not in replies, memory or topics, even later). They are still archived for deleted/edited tracking.
   - 🧹 **Clear history** of that chat only
 - 🧠 **Memory & tracking**:
   - 🗑 / ✏️ **Send me deleted / edited messages**: when the other person deletes or edits a message, you get the original. Media (photos, voice notes, videos, stickers…) is re-sent as well.

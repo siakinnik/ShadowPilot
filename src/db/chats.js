@@ -26,7 +26,9 @@ const MIGRATIONS = {
     ai_memory: 'TEXT',                        // notes the AI keeps about this chat by itself
     memory_until: 'INTEGER NOT NULL DEFAULT 0', // last archive.id folded into ai_memory
     topics_until: 'INTEGER NOT NULL DEFAULT 0', // last archive.id split into topics
-    reanalyze_by: 'INTEGER'                   // owner chat id waiting for a full re-analysis report
+    reanalyze_by: 'INTEGER',                  // owner chat id waiting for a full re-analysis report
+    ai_mode: 'TEXT',                          // 'replies_off' | 'ai_off' | NULL (normal)
+    ai_mode_until: 'INTEGER'                  // unix seconds when ai_mode ends; NULL = until turned back on
 };
 const existing = new Set(db.prepare('PRAGMA table_info(chats)').all().map(col => col.name));
 for (const [column, type] of Object.entries(MIGRATIONS)) {
@@ -99,6 +101,23 @@ const reanalyzeDoneStmt = db.prepare('UPDATE chats SET reanalyze_by = NULL WHERE
 const resetAllStmt = db.prepare('UPDATE chats SET ai_memory = NULL, reanalyze_by = NULL WHERE owner_user_id = ?');
 
 const allChats = () => allChatsStmt.all();
+const aiModeStmt = db.prepare('UPDATE chats SET ai_mode = ?, ai_mode_until = ? WHERE id = ?');
+
+/**
+ * Temporarily switches the AI off for a chat.
+ * @param {'replies_off'|'ai_off'|null} mode  null = back to normal
+ * @param {number|null} until unix seconds, null = until turned back on
+ */
+function setAiMode(id, mode, until = null) {
+    aiModeStmt.run(mode || null, mode ? until : null, id);
+}
+
+// Mode in effect right now (an expired one counts as normal)
+function aiModeOf(chat) {
+    if (!chat?.ai_mode) return null;
+    if (chat.ai_mode_until && chat.ai_mode_until <= Math.floor(Date.now() / 1000)) return null;
+    return chat.ai_mode;
+}
 const countChats = ns => countNsStmt.get(Number(ns)).n;
 // Forgets all chats of a namespace (used when an account is removed)
 const deleteChats = ns => deleteNsStmt.run(Number(ns));
@@ -126,6 +145,8 @@ module.exports = {
     setContext,
     chatTitle,
     allChats,
+    setAiMode,
+    aiModeOf,
     countChats,
     deleteChats,
     setAiMemory,

@@ -13,7 +13,7 @@ const archive = require('../db/archive');
 const { buildSystemPrompt, streamReply, judgeTurn } = require('../ai/openai');
 const { getSettings } = require('../db/settings');
 const { saveConnection, getConnection } = require('../db/connections');
-const { touchChat, getChatByKey } = require('../db/chats');
+const { touchChat, getChatByKey, aiModeOf } = require('../db/chats');
 const { canUse, getMember, upsertMember, namespaceOfKey } = require('../db/members');
 const { transcriptLines, transcriptMessages } = require('../ai/transcript');
 const { checkSchedule } = require('../utils/scheduleChecker');
@@ -106,6 +106,8 @@ function createBusinessHandlers(bot) {
         onFlush: async (key, batch) => {
             const ns = namespaceOfKey(key);
             if (!canUse(ns)) return; // access revoked while waiting
+            // AI was switched off for this chat while the messages were waiting
+            if (aiModeOf(getChatByKey(key))) return;
             const settings = getSettings(ns);
             const last = batch[batch.length - 1];
             const status = checkSchedule(settings.schedule, config.timezone);
@@ -189,16 +191,20 @@ function createBusinessHandlers(bot) {
         const key = chatKey(connection, message.chat.id);
         const text = messageToText(message);
         touchChat(key, connection.user_id, message.chat);
+        // Per-chat switch from the panel: no auto-replies, or the AI does not see the chat at all
+        const aiMode = aiModeOf(getChatByKey(key));
+        const hidden = aiMode === 'ai_off';
 
         // Message written by the account owner personally
         if (message.from?.id === connection.user_id) {
-            archive.archiveMessage(key, 'owner', message, text);
+            archive.archiveMessage(key, 'owner', message, text, { hidden });
             ownerActivity.set(key, Date.now());
             queue.cancel(key);
             return;
         }
 
-        archive.archiveMessage(key, 'them', message, text);
+        archive.archiveMessage(key, 'them', message, text, { hidden });
+        if (aiMode) return;
         queue.push(key, {
             text: message.text || message.caption || '',
             chatId: message.chat.id,
